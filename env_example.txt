@@ -1,0 +1,59 @@
+# Telegram Bot Configuration
+# Get your bot token from @BotFather in Telegram
+BOT_TOKEN=YOUR_BOT_TOKEN_HERE
+
+# Admin User IDs (comma-separated)
+# Get your ID from @userinfobot in Telegram
+ADMIN_IDS=123456789,987654321
+
+# Optional Settings (defaults shown)
+# Maximum file size in bytes (2GB)
+MAX_FILE_SIZE=2147483648
+
+# Default daily download limit for regular users
+DEFAULT_DAILY_LIMIT=10
+
+# Download timeout in seconds (1 hour)
+DOWNLOAD_TIMEOUT=3600
+
+# Maximum concurrent downloads per user
+MAX_CONCURRENT_DOWNLOADS=3
+
+# Enable VIP unlimited downloads (true/false)
+VIP_UNLIMITED=true
+
+# Maintenance mode (true/false)
+MAINTENANCE_MODE=false
+
+# Welcome message for new users
+WELCOME_MESSAGE=Welcome to the File Downloader Bot!
+
+# Database path
+DATABASE_PATH=bot_database.db
+
+# Log level (DEBUG, INFO, WARNING, ERROR)
+LOG_LEVEL=INFO
+
+# Cleanup old files after X days
+AUTO_CLEANUP_DAYS=7
+
+# Enable statistics collection
+ENABLE_STATS=true
+
+# Flood limit (requests per minute)
+FLOOD_LIMIT=5
+
+# Enable file compression for large files
+COMPRESSION_ENABLED=true
+
+# Upload directory
+UPLOAD_DIR=uploads
+
+# Temporary files directory
+TEMP_DIR=temp
+
+# Backup directory
+BACKUP_DIR=backups
+
+# Chart style for matplotlib
+CHART_STYLE=seaborn-v0_8-darkgrid
