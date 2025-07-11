@@ -48,21 +48,25 @@ sudo apt install -y \
 
 ## Installation Methods
 
-### Method 1: Automated Installation Script (Recommended for Linux)
+### Method 1: Quick One-Liner Install (Recommended for Linux)
 
-This script guides you through the process, including dependency installation, virtual environment setup, configuration, and optional systemd service and cronjob setup.
+For a fast setup on Linux systems, use the following one-liner command in your terminal. This command downloads and executes the installation script directly from the GitHub repository. The script will then guide you through the rest of the setup, including cloning the project, asking for your Bot Token, Admin ID(s), and other configurations.
 
-1.  **Clone the repository (if you haven't already):**
-    ```bash
-    git clone https://github.com/yourusername/telegram-downloader-bot.git
-    cd telegram-downloader-bot
-    ```
-2.  **Make the script executable and run it:**
-    ```bash
-    chmod +x install.sh
-    ./install.sh
-    ```
-    Follow the on-screen prompts. You will be asked for your Bot Token and Admin ID(s).
+```bash
+bash <(curl -sSL https://raw.githubusercontent.com/smyazdanp/DownloaderBot-Telegram/main/install.sh)
+```
+
+The `install.sh` script (once downloaded and run by the command above) handles:
+*   Cloning the latest version of the `DownloaderBot-Telegram` repository.
+*   System prerequisite checks.
+*   Python virtual environment creation within the cloned project directory.
+*   Installation of required Python libraries.
+*   Interactive prompts for essential configurations (Bot Token, Admin IDs), saving them to the `.env` file.
+*   Creation of necessary data directories (`downloads`, `uploads`, `temp`, `logs`, `backups`).
+*   Optional setup of a systemd service for running the bot in the background and enabling auto-start on boot.
+*   Optional setup of cron jobs for automated monitoring and backups.
+
+Ensure `curl` and `bash` are installed on your system (they usually are by default on most Linux distributions). The script itself will check for `git`.
 
 ### Method 2: Manual Installation
 

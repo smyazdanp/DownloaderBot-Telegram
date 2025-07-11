@@ -189,18 +189,38 @@ get_user_inputs() {
 
 setup_project_directory() {
     print_info "Setting up project directory..."
-    # Assuming the script is inside or next to the project directory.
-    # If the script is intended to be run from anywhere, cloning logic would be here.
-    # For now, we assume the project files (requirements.txt, .env.example) are accessible.
+    PROJECT_REPO="https://github.com/smyazdanp/DownloaderBot-Telegram.git"
+    CLONE_DIR_NAME="DownloaderBot-Telegram" # This should match the repo name usually
+
+    if [ -d "$CLONE_DIR_NAME" ]; then
+        print_warning "Directory '$CLONE_DIR_NAME' already exists."
+        if prompt_yes_no "Do you want to remove it and re-clone the latest version?" false; then
+            print_info "Removing existing directory..."
+            rm -rf "$CLONE_DIR_NAME"
+            git clone "$PROJECT_REPO" "$CLONE_DIR_NAME"
+        else
+            print_info "Using existing directory. Make sure it's up to date."
+        fi
+    else
+        print_info "Cloning repository $PROJECT_REPO..."
+        git clone "$PROJECT_REPO" "$CLONE_DIR_NAME"
+    fi
+
+    cd "$CLONE_DIR_NAME"
+    PROJECT_ABS_PATH=$(pwd) # Store absolute path after cd
+    print_success "Project directory is set up at $PROJECT_ABS_PATH."
+
+    # Now that we are inside the cloned directory, update file paths if they were relative
+    REQUIREMENTS_FILE="$PROJECT_ABS_PATH/$REQUIREMENTS_FILE"
+    ENV_EXAMPLE_FILE="$PROJECT_ABS_PATH/$ENV_EXAMPLE_FILE"
+    ENV_FILE="$PROJECT_ABS_PATH/$ENV_FILE"
+    VENV_DIR_ABS="$PROJECT_ABS_PATH/$VENV_DIR"
+
+
     if [ ! -f "$REQUIREMENTS_FILE" ]; then
-        print_error "$REQUIREMENTS_FILE not found. Make sure you are in the project directory."
-        # Example cloning logic (if needed):
-        # print_info "Cloning repository..."
-        # git clone <repo_url> $PROJECT_DIR_NAME
-        # cd $PROJECT_DIR_NAME
+        print_error "$REQUIREMENTS_FILE not found in the cloned project. Cloning might have failed or the file is missing in the repo."
         exit 1
     fi
-    print_success "Project directory is set up."
 }
 
 setup_virtual_environment() {
