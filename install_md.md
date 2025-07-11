@@ -48,21 +48,23 @@ sudo apt install -y \
 
 ## Installation Methods
 
-### Method 1: Automated Installation Script (Recommended for Linux)
+### Method 1: Quick One-Liner Install (Recommended for Linux)
 
-This script guides you through the process, including dependency installation, virtual environment setup, configuration, and optional systemd service and cronjob setup.
+For a fast setup on Linux systems, you can use the following one-liner command in your terminal. This command will clone the repository, navigate into the project directory, make the installation script executable, and then run it. The script will then guide you through the rest of the setup, including asking for your Bot Token and Admin ID(s).
 
-1.  **Clone the repository (if you haven't already):**
-    ```bash
-    git clone https://github.com/yourusername/telegram-downloader-bot.git
-    cd telegram-downloader-bot
-    ```
-2.  **Make the script executable and run it:**
-    ```bash
-    chmod +x install.sh
-    ./install.sh
-    ```
-    Follow the on-screen prompts. You will be asked for your Bot Token and Admin ID(s).
+```bash
+git clone https://github.com/YOUR_USERNAME/telegram-downloader-bot.git && cd telegram-downloader-bot && chmod +x install.sh && ./install.sh
+```
+**Note:** Replace `YOUR_USERNAME` with the correct GitHub username or the full repository URL if you are using a fork. Ensure `git` is installed on your system.
+
+The `install.sh` script handles:
+*   System prerequisite checks.
+*   Python virtual environment creation.
+*   Installation of required libraries.
+*   Interactive prompts for Bot Token and Admin ID(s), saving them to the `.env` file.
+*   Creation of necessary directories.
+*   Optional setup of a systemd service for background operation and auto-start.
+*   Optional setup of cron jobs for monitoring and backups.
 
 ### Method 2: Manual Installation
 
