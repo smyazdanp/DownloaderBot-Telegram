@@ -50,21 +50,23 @@ sudo apt install -y \
 
 ### Method 1: Quick One-Liner Install (Recommended for Linux)
 
-For a fast setup on Linux systems, you can use the following one-liner command in your terminal. This command will clone the repository, navigate into the project directory, make the installation script executable, and then run it. The script will then guide you through the rest of the setup, including asking for your Bot Token and Admin ID(s).
+For a fast setup on Linux systems, use the following one-liner command in your terminal. This command downloads and executes the installation script directly from the GitHub repository. The script will then guide you through the rest of the setup, including cloning the project, asking for your Bot Token, Admin ID(s), and other configurations.
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/telegram-downloader-bot.git && cd telegram-downloader-bot && chmod +x install.sh && ./install.sh
+bash <(curl -sSL https://raw.githubusercontent.com/smyazdanp/DownloaderBot-Telegram/main/install.sh)
 ```
-**Note:** Replace `YOUR_USERNAME` with the correct GitHub username or the full repository URL if you are using a fork. Ensure `git` is installed on your system.
 
-The `install.sh` script handles:
+The `install.sh` script (once downloaded and run by the command above) handles:
+*   Cloning the latest version of the `DownloaderBot-Telegram` repository.
 *   System prerequisite checks.
-*   Python virtual environment creation.
-*   Installation of required libraries.
-*   Interactive prompts for Bot Token and Admin ID(s), saving them to the `.env` file.
-*   Creation of necessary directories.
-*   Optional setup of a systemd service for background operation and auto-start.
-*   Optional setup of cron jobs for monitoring and backups.
+*   Python virtual environment creation within the cloned project directory.
+*   Installation of required Python libraries.
+*   Interactive prompts for essential configurations (Bot Token, Admin IDs), saving them to the `.env` file.
+*   Creation of necessary data directories (`downloads`, `uploads`, `temp`, `logs`, `backups`).
+*   Optional setup of a systemd service for running the bot in the background and enabling auto-start on boot.
+*   Optional setup of cron jobs for automated monitoring and backups.
+
+Ensure `curl` and `bash` are installed on your system (they usually are by default on most Linux distributions). The script itself will check for `git`.
 
 ### Method 2: Manual Installation
 
