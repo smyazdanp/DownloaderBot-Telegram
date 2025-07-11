@@ -59,29 +59,7 @@ except ImportError as e:
     print("pip install -r requirements.txt")
     sys.exit(1)
 
-# ===== تنظیمات اصلی =====
-BOT_TOKEN = "8041569656:AAHaC9c6SoFMy0rlk5Hap3DD6tfUtBaAixw"
-ADMIN_IDS = [111111111]
-
-# محدودیت‌ها
-MAX_FILE_SIZE = 2000 * 1024 * 1024  # 2000MB (کمی کمتر از 2GB برای اطمینان)
-CHUNK_SIZE = 1900 * 1024 * 1024  # 1900MB برای هر بخش
-DEFAULT_DAILY_LIMIT = 10
-DOWNLOAD_CHUNK_SIZE = 1024 * 1024  # 1MB chunks
-MAX_CONCURRENT_DOWNLOADS = 3
-DOWNLOAD_TIMEOUT = 3600  # 1 ساعت
-
-# Headers
-HEADERS = {
-    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-    'Accept': '*/*',
-    'Accept-Language': 'en-US,en;q=0.9,fa;q=0.8',
-    'Accept-Encoding': 'gzip, deflate, br',
-    'Connection': 'keep-alive',
-    'Upgrade-Insecure-Requests': '1',
-}
-
-# تنظیمات لاگ
+# ===== تنظیمات لاگ =====
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
@@ -92,13 +70,62 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# ===== بارگذاری تنظیمات از .env و متغیرهای محیطی =====
+from dotenv import load_dotenv
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+ADMIN_IDS_STR = os.getenv("ADMIN_IDS")
+DEFAULT_DAILY_LIMIT_STR = os.getenv("DEFAULT_DAILY_LIMIT", "10")
+MAX_FILE_SIZE_STR = os.getenv("MAX_FILE_SIZE", str(2000 * 1024 * 1024))
+CHUNK_SIZE_STR = os.getenv("CHUNK_SIZE_UPLOAD", str(1900 * 1024 * 1024)) # Renamed for clarity if used for uploads
+DOWNLOAD_CHUNK_SIZE_STR = os.getenv("DOWNLOAD_CHUNK_SIZE", str(1024 * 1024))
+MAX_CONCURRENT_DOWNLOADS_STR = os.getenv("MAX_CONCURRENT_DOWNLOADS", "3")
+DOWNLOAD_TIMEOUT_STR = os.getenv("DOWNLOAD_TIMEOUT", "3600")
+
+if not BOT_TOKEN:
+    logger.critical("CRITICAL: BOT_TOKEN not found in environment variables or .env file!")
+    sys.exit(1)
+
+if not ADMIN_IDS_STR:
+    logger.warning("WARNING: ADMIN_IDS not found in environment variables or .env file. Admin functionality might be limited.")
+    ADMIN_IDS = []
+else:
+    try:
+        ADMIN_IDS = [int(admin_id.strip()) for admin_id in ADMIN_IDS_STR.split(',')]
+    except ValueError:
+        logger.critical("CRITICAL: Invalid ADMIN_IDS format in environment variables or .env file. Should be comma-separated integers.")
+        sys.exit(1)
+
+try:
+    DEFAULT_DAILY_LIMIT = int(DEFAULT_DAILY_LIMIT_STR)
+    MAX_FILE_SIZE = int(MAX_FILE_SIZE_STR)
+    CHUNK_SIZE = int(CHUNK_SIZE_STR) # This is for splitting large files for upload
+    DOWNLOAD_CHUNK_SIZE = int(DOWNLOAD_CHUNK_SIZE_STR) # This is for iterating download
+    MAX_CONCURRENT_DOWNLOADS = int(MAX_CONCURRENT_DOWNLOADS_STR)
+    DOWNLOAD_TIMEOUT = int(DOWNLOAD_TIMEOUT_STR)
+except ValueError as e:
+    logger.critical(f"CRITICAL: Invalid numeric value in environment settings: {e}")
+    sys.exit(1)
+
+# Headers
+HEADERS = {
+    'User-Agent': os.getenv("DOWNLOAD_USER_AGENT", 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'),
+    'Accept': '*/*',
+    'Accept-Language': 'en-US,en;q=0.9,fa;q=0.8',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Connection': 'keep-alive',
+    'Upgrade-Insecure-Requests': '1',
+}
+
 # ایجاد پوشه‌ها
 for folder in ['downloads', 'uploads', 'temp', 'logs', 'backups']:
     os.makedirs(folder, exist_ok=True)
 
 # ===== ایجاد ربات =====
-bot = Bot(token=BOT_TOKEN)
+# TODO: Consider using RedisStorage or another persistent storage for FSM in production
 storage = MemoryStorage()
+bot = Bot(token=BOT_TOKEN, parse_mode=ParseMode.HTML) # Default parse mode
 dp = Dispatcher(storage=storage)
 
 # ===== States =====
@@ -964,17 +991,19 @@ def sanitize_filename(filename: str) -> str:
 class AdvancedDownloadManager:
     """سیستم دانلود پیشرفته با قابلیت‌های حرفه‌ای"""
     
-    def __init__(self):
+    def __init__(self, max_concurrent_downloads: int, download_timeout: int):
         self.active_downloads: Dict[int, asyncio.Task] = {}
-        self.download_queue: asyncio.Queue = asyncio.Queue()
+        self.download_queue: asyncio.Queue = asyncio.Queue() # Might not be needed if using semaphore directly
         self.progress_trackers: Dict[int, dict] = {}
         self.session: Optional[aiohttp.ClientSession] = None
+        self.download_semaphore = asyncio.Semaphore(max_concurrent_downloads)
+        self.download_timeout_config = download_timeout
         
     async def initialize(self):
         """راه‌اندازی session"""
-        if not self.session:
+        if not self.session or self.session.closed:
             timeout = aiohttp.ClientTimeout(
-                total=DOWNLOAD_TIMEOUT,
+                total=self.download_timeout_config,
                 connect=30,
                 sock_connect=30,
                 sock_read=300
@@ -1002,9 +1031,10 @@ class AdvancedDownloadManager:
     async def download_file(self, url: str, user_id: int, 
                           progress_callback=None) -> Tuple[Optional[str], Optional[str], int, dict]:
         """دانلود فایل با قابلیت‌های پیشرفته"""
-        await self.initialize()
-        
-        temp_dir = tempfile.mkdtemp(dir="temp", prefix=f"user_{user_id}_")
+        async with self.download_semaphore:
+            await self.initialize()
+
+            temp_dir = tempfile.mkdtemp(dir="temp", prefix=f"user_{user_id}_")
         download_info = {
             'start_time': time.time(),
             'temp_dir': temp_dir,
@@ -1168,15 +1198,28 @@ class AdvancedDownloadManager:
         
         # از URL
         if not filename:
-            filename = extract_filename_from_url(url)
+            # Import urllib.parse if not already at top level
+            # import urllib.parse
+            parsed_url = urlparse(url)
+            path = unquote(parsed_url.path)
+            url_filename = os.path.basename(path)
+            if url_filename and '.' in url_filename: # Basic check for a valid filename
+                filename = url_filename
+            elif parsed_url.query: # Try to get from query params if path didn't yield good name
+                params = urllib.parse.parse_qs(parsed_url.query)
+                for key_param in ['filename', 'name', 'file', 'download']:
+                    if key_param in params:
+                        filename = params[key_param][0]
+                        break
         
         # نام پیش‌فرض
-        if not filename:
+        if not filename or len(filename) > 200: # Added length check for safety, can be tuned
             content_type = response.headers.get('Content-Type', 'application/octet-stream')
-            ext = mimetypes.guess_extension(content_type.split(';')[0]) or '.bin'
+            ext = mimetypes.guess_extension(content_type.split(';')[0].strip()) or '.bin'
             filename = f"download_{int(time.time())}{ext}"
-        
-        return filename
+            filename = sanitize_filename(filename) # Sanitize default name too
+
+        return sanitize_filename(filename) # Ensure final filename is sanitized
     
     def get_progress(self, user_id: int) -> Optional[dict]:
         """دریافت وضعیت دانلود"""
@@ -1195,7 +1238,11 @@ class AdvancedDownloadManager:
         return False
 
 # ایجاد نمونه
-download_manager = AdvancedDownloadManager()
+# مقادیر MAX_CONCURRENT_DOWNLOADS و DOWNLOAD_TIMEOUT از تنظیمات بارگذاری شده استفاده می‌شوند
+download_manager = AdvancedDownloadManager(
+    max_concurrent_downloads=MAX_CONCURRENT_DOWNLOADS,
+    download_timeout=DOWNLOAD_TIMEOUT
+)
 
 # ===== تابع اصلی ارسال فایل =====
 async def send_file_to_user(message: Message, file_path: str, filename: str, 
@@ -1436,8 +1483,8 @@ async def my_stats_command(message: Message):
 @dp.message(Command("dl"))
 async def download_by_code(message: Message):
     """دانلود با کد"""
-    parts = message.text.split(maxsplit=1)
-    if len(parts) < 2:
+    command_parts = message.text.split(maxsplit=1)
+    if len(command_parts) < 2 or not command_parts[1].strip():
         await message.reply(
             "❌ لطفاً کد فایل را وارد کنید!\n"
             "مثال: <code>/dl ABC123</code>",
@@ -1445,7 +1492,7 @@ async def download_by_code(message: Message):
         )
         return
     
-    file_hash = parts[1].strip()
+    file_hash = command_parts[1].strip()
     upload_info = db.get_upload(file_hash)
     
     if not upload_info:
@@ -1772,19 +1819,32 @@ async def handle_download(message: Message, url: str, state: FSMContext):
             
             # نوار پیشرفت
             bar_length = 20
-            filled = int(bar_length * percent / 100)
+            filled = int(bar_length * percent / 100) if progress['total_size'] > 0 else 0
             bar = '█' * filled + '░' * (bar_length - filled)
+
+            # نمایش حجم
+            size_display = format_size(progress['downloaded'])
+            if progress['total_size'] > 0:
+                size_display += f" / {format_size(progress['total_size'])}"
+            else:
+                size_display += " (حجم کل نامشخص)"
+
+            # نمایش درصد
+            percent_display = f"{percent:.1f}%" if progress['total_size'] > 0 else "N/A"
             
+            # نمایش ETA
+            eta_display = format_time(eta) if progress['total_size'] > 0 and speed > 0 else "نامشخص"
+
             text = f"""
 📥 <b>در حال دانلود...</b>
 
 📁 {progress['filename']}
 ▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️
-[{bar}] {percent:.1f}%
+[{bar}] {percent_display}
 ▫️▫️▫️▫️▫️▫️▫️▫️▫️▫️
-📊 {format_size(progress['downloaded'])} / {format_size(progress['total_size'])}
+📊 {size_display}
 ⚡ سرعت: {format_size(int(speed))}/s
-⏱ زمان باقی: {format_time(eta)}
+⏱ زمان باقی: {eta_display}
             """
             
             await start_msg.edit_text(text.strip(), parse_mode=ParseMode.HTML)
@@ -2016,93 +2076,88 @@ async def handle_large_file(message: Message, file_path: str,
         )
     
     finally:
-        # پاکسازی
+        data_from_state = await state.get_data()
+        original_temp_dir = data_from_state.get('temp_dir')
         try:
-            if 'parts_dir' in locals():
+            if 'parts_dir' in locals() and os.path.exists(parts_dir):
                 shutil.rmtree(parts_dir)
-            os.remove(file_path)
-        except:
-            pass
-        
+            # file_path is the original downloaded file, which is now split.
+            # It should be in original_temp_dir.
+            # os.remove(file_path) # This might fail if file_path is inside original_temp_dir
+
+            if original_temp_dir and os.path.exists(original_temp_dir):
+                 shutil.rmtree(original_temp_dir)
+                 logger.info(f"Cleaned up original temp directory for large file: {original_temp_dir}")
+        except Exception as e_clean_large:
+            logger.error(f"Error during cleanup in handle_large_file: {e_clean_large}")
         await state.clear()
 
 # ===== کالبک‌های ارسال =====
 @dp.callback_query(StateFilter(DownloadStates.choosing_format))
 async def handle_send_callback(callback: CallbackQuery, state: FSMContext):
     """مدیریت انتخاب نوع ارسال"""
-    if callback.data == "cancel_send":
-        await callback.message.edit_text("❌ ارسال لغو شد.")
-        
-        # پاکسازی
-        data = await state.get_data()
-        if data.get('temp_dir'):
-            try:
-                shutil.rmtree(data['temp_dir'])
-            except:
-                pass
-        
-        await state.clear()
-        await callback.answer()
-        return
-    
-    # دریافت اطلاعات
-    data = await state.get_data()
-    file_path = data.get('file_path')
-    filename = data.get('filename')
-    file_size = data.get('file_size')
-    
-    if not file_path or not os.path.exists(file_path):
-        await callback.answer("❌ فایل یافت نشد!", show_alert=True)
-        await state.clear()
-        return
-    
-    # تعیین نوع ارسال
-    send_as = callback.data.replace("send_as_", "")
-    
-    await callback.answer("در حال ارسال...")
-    await callback.message.edit_text(
-        f"📤 در حال ارسال فایل...\n"
-        f"📁 {filename}\n"
-        f"📊 {format_size(file_size)}"
-    )
-    
-    # ارسال
+    data = await state.get_data() # Get data first to use in finally block too
     try:
+        if callback.data == "cancel_send":
+            await callback.message.edit_text("❌ ارسال لغو شد.")
+            await callback.answer()
+            return # Return after answering, finally will handle cleanup and state clear
+
+        file_path = data.get('file_path')
+        filename = data.get('filename')
+        file_size = data.get('file_size')
+
+        if not file_path or not os.path.exists(file_path):
+            await callback.answer("❌ فایل یافت نشد!", show_alert=True)
+            # No return here, finally will clear state
+            return
+
+        send_as = callback.data.replace("send_as_", "")
+
+        await callback.answer("در حال ارسال...")
+        await callback.message.edit_text(
+            f"📤 در حال ارسال فایل...\n"
+            f"📁 {filename}\n"
+            f"📊 {format_size(file_size)}"
+        )
+
         success = await send_file_to_user(
-            callback.message,
+            callback.message, # Should be callback.message.chat.id and bot.send_... or use message object if suitable
             file_path,
             filename,
             file_size,
             send_as=send_as,
             mime_type=data.get('mime_type')
         )
-        
+
         if success:
-            # پیام موفقیت
             downloads_today, size_today = db.get_daily_downloads(callback.from_user.id)
             limit = db.get_user_limit(callback.from_user.id)
-            
             await callback.message.edit_text(
                 f"✅ <b>ارسال کامل شد!</b>\n\n"
                 f"📥 دانلود امروز: {downloads_today}/{limit if limit < 999999 else '♾'}\n"
                 f"💾 حجم امروز: {format_size(size_today)}",
                 parse_mode=ParseMode.HTML
             )
-        
+        # If not success, error is handled in send_file_to_user, message is already edited or replied to.
+        # We might want to edit the callback.message here if send_file_to_user doesn't edit it.
+
     except Exception as e:
-        logger.error(f"Send error: {e}", exc_info=True)
-        await callback.message.edit_text(
-            f"❌ خطا در ارسال:\n{str(e)}"
-        )
-    
-    finally:
-        # پاکسازی
+        logger.error(f"Error in handle_send_callback: {e}", exc_info=True)
         try:
-            if data.get('temp_dir'):
-                shutil.rmtree(data['temp_dir'])
-        except:
-            pass
-        
+            await callback.message.edit_text(f"❌ خطای غیرمنتظره در عملیات ارسال:\n{str(e)}")
+        except TelegramBadRequest: # If message cannot be edited
+            await bot.send_message(callback.message.chat.id, f"❌ خطای غیرمنتظره در عملیات ارسال:\n{str(e)}")
+        await callback.answer("خطای غیرمنتظره", show_alert=True)
+
+    finally:
+        temp_directory_to_clean = data.get('temp_dir')
+        if temp_directory_to_clean and os.path.exists(temp_directory_to_clean):
+            try:
+                shutil.rmtree(temp_directory_to_clean)
+                logger.info(f"Cleaned up temp directory: {temp_directory_to_clean}")
+            except Exception as e_clean:
+                logger.error(f"Error cleaning up temp directory {temp_directory_to_clean}: {e_clean}")
         await state.clear()
 
 # ===== مدیریت States ادمین =====
@@ -2397,13 +2452,21 @@ async def detailed_stats_callback(callback: CallbackQuery):
     """
     
     # توزیع فایل‌ها
-    if stats['file_types']:
-        detailed_text += "\n\n📎 <b>توزیع انواع فایل:</b>\n"
-        for ftype, data in sorted(stats['file_types'].items(), 
-                                 key=lambda x: x[1]['count'], 
-                                 reverse=True)[:5]:
-            percent = (data['count'] / stats['downloads']['total']) * 100
-            detailed_text += f"├ {ftype}: {data['count']:,} ({percent:.1f}%)\n"
+    if stats.get('file_types'): # Check if file_types exists
+        total_downloads_count = stats.get('downloads', {}).get('total', 0)
+        if total_downloads_count and total_downloads_count > 0:
+            detailed_text += "\n\n📎 <b>توزیع انواع فایل:</b>\n"
+            for ftype, data in sorted(stats['file_types'].items(),
+                                     key=lambda x: x[1]['count'],
+                                     reverse=True)[:5]:
+                percent = (data['count'] / total_downloads_count) * 100
+                detailed_text += f"├ {ftype}: {data['count']:,} ({percent:.1f}%)\n"
+        elif stats['file_types']: # If there are file types but no downloads (or total is 0)
+             detailed_text += "\n\n📎 <b>توزیع انواع فایل (تعداد دانلود کل: 0):</b>\n"
+             for ftype, data in sorted(stats['file_types'].items(),
+                                     key=lambda x: x[1]['count'],
+                                     reverse=True)[:5]:
+                detailed_text += f"├ {ftype}: {data['count']:,} (حجم: {format_size(data.get('size',0))})\n"
     
     keyboard = InlineKeyboardBuilder()
     keyboard.button(text="📈 نمودار", callback_data="admin_charts")
@@ -2486,12 +2549,13 @@ async def show_charts_callback(callback: CallbackQuery):
         ax4.axis('off')
         
         stats = db.get_statistics()
+        avg_daily_downloads = (sum(downloads)/len(downloads)) if downloads and len(downloads) > 0 else 0
         summary_text = (
             f"📊 خلاصه آمار: "
-            f"کل کاربران: {stats['users']['total']:,} | "
-            f"کل دانلودها: {stats['downloads']['total']:,} | "
-            f"حجم کل: {format_size(stats['downloads']['total_size'] or 0)} | "
-            f"میانگین روزانه: {sum(downloads)/len(downloads):.0f} دانلود"
+            f"کل کاربران: {stats.get('users', {}).get('total', 0):,} | "
+            f"کل دانلودها: {stats.get('downloads', {}).get('total', 0):,} | "
+            f"حجم کل: {format_size(stats.get('downloads', {}).get('total_size', 0) or 0)} | "
+            f"میانگین روزانه: {avg_daily_downloads:.0f} دانلود"
         )
         ax4.text(0.5, 0.5, summary_text, ha='center', va='center', 
                 fontsize=12, bbox=dict(boxstyle="round,pad=0.5", 
@@ -2655,13 +2719,19 @@ async def on_shutdown():
     logger.info("🔴 Shutting down...")
     
     # بستن download manager
-    await download_manager.close()
+    if download_manager and download_manager.session: # Check if it was initialized
+        await download_manager.close()
     
-    # ذخیره آمار
-    stats = db.get_statistics()
-    logger.info(f"Final stats: Users={stats['users']['total']}, Downloads={stats['downloads']['total']}")
+    # ذخیره آمار (اختیاری، چون ممکن است برنامه به طور ناگهانی بسته شود)
+    try:
+        stats = db.get_statistics()
+        if stats and stats.get('users') and stats.get('downloads'):
+             logger.info(f"Final stats: Users={stats['users'].get('total',0)}, Downloads={stats['downloads'].get('total',0)}")
+    except Exception as e:
+        logger.error(f"Error getting final stats on shutdown: {e}")
     
-    await bot.session.close()
+    # session خود aiogram Bot به طور خودکار مدیریت می‌شود و نیازی به بستن دستی bot.session.close() نیست
+    # مگر اینکه session خاصی برای bot ساخته باشید که در اینجا اینطور نیست.
 
 async def main():
     """تابع اصلی"""

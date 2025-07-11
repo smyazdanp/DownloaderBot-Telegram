@@ -57,45 +57,64 @@
 
 ## 🚀 نصب
 
-### شروع سریع
+### روش پیشنهادی: اسکریپت نصب خودکار (مخصوص لینوکس)
 
-1. **کلون کردن مخزن**
-```bash
-git clone https://github.com/yourusername/telegram-downloader-bot.git
-cd telegram-downloader-bot
-```
+برای نصب آسان و سریع بر روی سیستم‌های لینوکسی (مانند اوبونتو)، می‌توانید از اسکریپت نصب خودکار استفاده کنید:
 
-2. **ایجاد محیط مجازی**
-```bash
-python3 -m venv venv
-source venv/bin/activate  # در ویندوز: venv\Scripts\activate
-```
+1.  **دانلود و اجرای اسکریپت:**
+    ```bash
+    git clone https://github.com/yourusername/telegram-downloader-bot.git
+    cd telegram-downloader-bot
+    chmod +x install.sh
+    ./install.sh
+    ```
+    اسکریپت شما را در طی مراحل نصب راهنمایی می‌کند، از جمله دریافت توکن ربات و آیدی ادمین، و همچنین نصب به عنوان سرویس systemd و تنظیم cronjob ها برای مانیتورینگ و بکاپ (اختیاری).
 
-3. **نصب وابستگی‌ها**
-```bash
-pip install -r requirements.txt
+### روش دستی
 
-# فقط برای لینوکس/مک:
-pip uninstall python-magic-bin -y
-```
+اگر ترجیح می‌دهید مراحل را به صورت دستی انجام دهید یا از سیستم‌عامل دیگری استفاده می‌کنید:
 
-4. **پیکربندی ربات**
-```bash
-# ایجاد فایل .env
-cp .env.example .env
+1.  **کلون کردن مخزن:**
+    ```bash
+    git clone https://github.com/yourusername/telegram-downloader-bot.git
+    cd telegram-downloader-bot
+    ```
 
-# ویرایش با مقادیر خود
-nano .env
-```
+2.  **ایجاد محیط مجازی:**
+    ```bash
+    python3 -m venv venv
+    source venv/bin/activate  # در لینوکس/مک
+    # venv\Scripts\activate  # در ویندوز
+    ```
 
-5. **اجرای ربات**
-```bash
-python telegram_bot.py
-```
+3.  **نصب وابستگی‌ها:**
+    ```bash
+    pip install --upgrade pip
+    pip install -r requirements.txt
+    # در لینوکس/مک، اگر python-magic-bin نصب شده باشد، بهتر است حذف شود:
+    # pip uninstall python-magic-bin -y
+    ```
 
-### نصب کامل
+4.  **پیکربندی ربات:**
+    *   یک کپی از فایل `.env.example` با نام `.env` ایجاد کنید:
+        ```bash
+        cp .env.example .env
+        ```
+    *   فایل `.env` را باز کرده و مقادیر `BOT_TOKEN` (توکن ربات دریافتی از @BotFather) و `ADMIN_IDS` (آیدی عددی ادمین یا ادمین‌ها، جدا شده با کاما) را با مقادیر صحیح جایگزین کنید. سایر تنظیمات اختیاری نیز در این فایل قابل تغییر هستند.
 
-برای راهنمای کامل شامل سرویس systemd، مانیتورینگ و بهینه‌سازی، [INSTALL.fa.md](INSTALL.fa.md) را ببینید.
+5.  **ایجاد پوشه‌های مورد نیاز (اگر وجود ندارند):**
+    ```bash
+    mkdir -p downloads uploads temp logs backups
+    ```
+
+6.  **اجرای ربات:**
+    ```bash
+    python telegram_downloader_bot.py
+    ```
+
+### نصب کامل و راه‌اندازی به عنوان سرویس
+
+برای راهنمای کامل شامل راه‌اندازی ربات به عنوان سرویس systemd (برای اجرای دائمی در پس‌زمینه)، تنظیمات مانیتورینگ و بکاپ خودکار، به فایل [INSTALL.md](INSTALL.md) (یا [INSTALL.fa.md](INSTALL.fa.md) برای فارسی) مراجعه کنید. اسکریپت نصب خودکار (`install.sh`) بسیاری از این مراحل را برای شما انجام می‌دهد.
 
 ## 🔧 پیکربندی
 
